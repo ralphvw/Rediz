@@ -5,12 +5,8 @@ pub const Connection = struct {
     allocator: *std.mem.Allocator,
 
     pub fn connect(allocator: *std.mem.Allocator, address: []const u8, port: u16) !Connection {
-        const stream = try std.net.Stream.initConnect(.{
-            .address = .{
-                .ip = try std.net.Address.parseIp4(address),
-                .port = port,
-            },
-        });
+        const ipAddress = try std.net.Ip4Address.parse(address, port);
+        const stream = try std.net.tcpConnectToAddress(.{ .in = ipAddress });
         return Connection{ .stream = stream, .allocator = allocator };
     }
 
