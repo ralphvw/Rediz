@@ -1,0 +1,32 @@
+# Ignore Zig build cache
+.zig-cache/
+
+# Ignore binaries and build artifacts
+zig-out/
+
+# Ignore temporary files created by editors or OS
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Ignore logs and debug files
+*.log
+
+# Ignore system-specific files
+.idea/           # IntelliJ IDEA or CLion project files
+.vscode/         # VS Code settings
+*.iml            # IntelliJ module files
+
+# Ignore compiled library files (if any)
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+
+# Ignore user-specific configuration files
+*.user
+
+# Ignore test coverage or analysis tools output
+coverage/
