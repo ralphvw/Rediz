@@ -1,29 +1,104 @@
-//! Main redis package
-
 const std = @import("std");
-const Connection = @import("connection.zig").Connection;
-const buildCommand = @import("command.zig").buildCommand;
-const parseResponse = @import("parser.zig").parseResponse;
+const net = std.net;
+const mem = std.mem;
+const Uri = std.Uri;
 
-pub const Redis = struct {
-    connection: Connection,
+pub const RedisClient = struct {
+    stream: net.Stream,
+    allocator: mem.Allocator,
 
-    pub fn connect(allocator: *std.mem.Allocator, address: []const u8, port: u16) !Redis {
-        return Redis{ .connection = try Connection.connect(allocator, address, port) };
+    const Self = @This();
+
+    pub fn connect(allocator: mem.Allocator, uri: []const u8) !Self {
+        const parsed_uri = try Uri.parse(uri);
+        const port = parsed_uri.port orelse 6379;
+        const host = parsed_uri.host.?;
+        const address = try net.Address.resolveIp(host.percent_encoded, port);
+
+        const stream = try net.tcpConnectToAddress(address);
+
+        var client = Self{
+            .stream = stream,
+            .allocator = allocator,
+        };
+
+        if (parsed_uri.password) |password| {
+            try client.auth(password.percent_encoded);
+        }
+
+        const path = parsed_uri.path;
+        if (path.percent_encoded.len > 1 and path.percent_encoded[0] == '/') {
+            const db = try std.fmt.parseInt(u8, path.percent_encoded[1..], 10);
+            try client.select(db);
+        }
+
+        return client;
     }
 
-    pub fn set(self: *Redis, key: []const u8, value: []const u8) !void {
-        const cmd = try buildCommand("SET", &.{ key, value });
-        try self.connection.stream.writer().writeAll(cmd);
-        var buffer: [1024]u8 = undefined;
-        _ = try self.connection.stream.reader().read(&buffer);
+    pub fn disconnect(self: *Self) void {
+        self.stream.close();
     }
 
-    pub fn get(self: *Redis, key: []const u8) ![]const u8 {
-        const cmd = try buildCommand("GET", &.{key});
-        try self.connection.stream.writer().writeAll(cmd);
-        var buffer: [1024]u8 = undefined;
-        _ = try self.connection.stream.reader().read(&buffer);
-        return parseResponse(&buffer);
+    fn sendCommand(self: *Self, args: []const []const u8) !void {
+        var writer = self.stream.writer();
+        try writer.print("*{d}\r\n", .{args.len});
+        for (args) |arg| {
+            try writer.print("${d}\r\n", .{arg.len});
+            try writer.writeAll(arg);
+            try writer.writeAll("\r\n");
+        }
+    }
+
+    fn readSimpleString(self: *Self) ![]const u8 {
+        var reader = self.stream.reader();
+        return reader.readUntilDelimiterAlloc(self.allocator, '\r', 1024);
+    }
+
+    fn readBulkString(self: *Self) !?[]const u8 {
+        var reader = self.stream.reader();
+        const len = try reader.readUntilDelimiterAlloc(self.allocator, '\r', 1024);
+        defer self.allocator.free(len);
+
+        const length = try std.fmt.parseInt(usize, len[2..], 10);
+        if (length == -1) return null;
+
+        const data = try self.allocator.alloc(u8, length + 1);
+        try reader.readNoEof(data);
+        try reader.skipBytes(2, .{}); // Skip \r\n
+        return data;
+    }
+
+    pub fn set(self: *Self, key: []const u8, value: []const u8) !void {
+        try self.sendCommand(&[_][]const u8{ "SET", key, value });
+        const response = try self.readSimpleString();
+        defer self.allocator.free(response);
+        if (!mem.eql(u8, response, "+OK")) {
+            return error.RedisError;
+        }
+    }
+
+    pub fn get(self: *Self, key: []const u8) !?[]const u8 {
+        try self.sendCommand(&[_][]const u8{ "GET", key });
+        return try self.readBulkString();
+    }
+
+    fn auth(self: *Self, password: []const u8) !void {
+        try self.sendCommand(&[_][]const u8{ "AUTH", password });
+        const response = try self.readSimpleString();
+        defer self.allocator.free(response);
+        if (!mem.eql(u8, response, "+OK")) {
+            return error.AuthFailed;
+        }
+    }
+
+    fn select(self: *Self, db: u8) !void {
+        var buf: [16]u8 = undefined;
+        const db_str = try std.fmt.bufPrint(&buf, "{}", .{db});
+        try self.sendCommand(&[_][]const u8{ "SELECT", db_str });
+        const response = try self.readSimpleString();
+        defer self.allocator.free(response);
+        if (!mem.eql(u8, response, "+OK")) {
+            return error.SelectFailed;
+        }
     }
 };

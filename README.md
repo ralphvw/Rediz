@@ -14,17 +14,22 @@ Clone this repository and add it as a dependency in your Zig project.
 ## Usage
 
 ```zig
-const std = @import("std");
-const Redis = @import("Rediz/redis.zig").Redis;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer _ = gpa.deinit();
 
-pub fn main() !void {
-    var allocator = std.heap.page_allocator;
-    var redis = try Redis.connect(&allocator, "127.0.0.1", 6379);
+    // Connect to Redis (example: redis://password@localhost:6379/0)
+    var client = try RedisClient.connect(allocator, "redis://localhost:6379");
+    defer client.disconnect();
 
-    try redis.set("key", "value");
-    const value = try redis.get("key");
-    std.debug.print("Value: {s}\n", .{value});
-}
+    // Set and get value
+    try client.set("zig_test", "hello world");
+    const value = try client.get("zig_test");
+
+    if (value) |v| {
+        std.debug.print("Got value: {s}\n", .{v});
+        allocator.free(v);
+    }
 ```
 
 ## Adding Rediz to Your Project
