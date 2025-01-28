@@ -58,6 +58,9 @@ pub const RedisClient = struct {
         var reader = self.stream.reader();
         const len = try reader.readUntilDelimiterAlloc(self.allocator, '\r', 1024);
         defer self.allocator.free(len);
+        if (containsChar(len, '-')) {
+            return null;
+        }
 
         const length = try std.fmt.parseInt(usize, len[2..], 10);
         if (length == -1) return null;
@@ -100,5 +103,14 @@ pub const RedisClient = struct {
         if (!mem.eql(u8, response, "+OK")) {
             return error.SelectFailed;
         }
+    }
+
+    fn containsChar(input: []const u8, target: u8) bool {
+        for (input) |char| {
+            if (char == target) {
+                return true;
+            }
+        }
+        return false;
     }
 };

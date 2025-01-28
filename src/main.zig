@@ -12,7 +12,7 @@ pub fn main() !void {
 
     // Set and get value
     try client.set("zig_test", "");
-    const value = try client.get("zig_test");
+    const value = try client.get("somestation");
 
     if (value) |v| {
         std.debug.print("Got value: {s}\n", .{v});
