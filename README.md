@@ -9,7 +9,7 @@ A Zig library for interacting with Redis.
 
 ## Installation
 
-zig fetch --save git+https://github.com/ralphvw/Rediz#master
+zig fetch --save git+https://github.com/ralphvw/Rediz#main
 
 ## Usage
 
