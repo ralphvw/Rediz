@@ -26,6 +26,15 @@ pub fn build(b: *std.Build) void {
     // running `zig build`).
     b.installArtifact(lib);
 
+    const rediz_module = b.addModule("rediz", .{
+        .root_source_file = b.path("src/redis.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Link module to both library and executable (optional)
+    lib.root_module.addImport("rediz", rediz_module);
+
     const exe = b.addExecutable(.{
         .name = "rediz-example",
         .root_source_file = b.path("src/main.zig"),
