@@ -32,7 +32,7 @@ pub fn main() !void {
 
     if (value) |v| {
         std.debug.print("Got value: {s}\n", .{v});
-        allocator.free(v);
+        allocator.free(v); // *Make sure to free the result
     }
 }
 ```
