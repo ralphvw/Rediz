@@ -1,6 +1,6 @@
 const std = @import("std");
 const testing = std.testing;
-const RedisClient = @import("redis.zig").RedisClient; // Update with correct path
+const RedisClient = @import("redis.zig").RedisClient;
 
 test "RedisClient can connect and disconnect" {
     var client = try RedisClient.connect(std.testing.allocator, "redis://127.0.0.1:6379");
@@ -13,19 +13,9 @@ test "RedisClient can set and get a key" {
     var client = try RedisClient.connect(std.testing.allocator, "redis://127.0.0.1:6379");
     defer client.disconnect();
 
-    std.debug.print("Connected to Redis\n", .{});
-
     try client.set("test_key", "test_value");
-    std.debug.print("Set key successful\n", .{});
 
     const value = try client.get("test_key");
-    std.debug.print("Got value from Redis\n", .{});
-
-    if (value) |val| {
-        std.debug.print("Raw bytes:{any}\n", .{val});
-    } else {
-        std.debug.print("Value is null\n", .{});
-    }
 
     defer std.testing.allocator.free(value.?);
     try testing.expect(value != null);

@@ -47,11 +47,6 @@ pub const RedisClient = struct {
             try writer.writeAll(arg);
             try writer.writeAll("\r\n");
         }
-
-        std.debug.print("Sent command: ", .{});
-        for (args) |arg| {
-            std.debug.print("{s} ", .{arg});
-        }
     }
 
     fn readSimpleString(self: *Self) ![]const u8 {
