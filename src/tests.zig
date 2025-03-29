@@ -118,7 +118,7 @@ test "Redis client fails to get from a hashset into a stack allocated buffer" {
     try client.hset("lumon_employees", "emp_1", "Mark S.");
 
     const response = try client.hgetInto("lumon_employees", "emp_1", &buffer);
-    if (response) {
+    if (response) |_| {
         try testing.expect(false);
     } else {
         try testing.expectError(error.BufferTooSmall, response);
