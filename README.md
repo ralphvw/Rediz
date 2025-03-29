@@ -66,3 +66,7 @@ pub fn build(b: *std.build.Builder) void {
     exe.root_module.addImport("rediz", rediz.module("rediz"));
 }
 ```
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on how to contribute, set up your environment, and submit pull requests.
