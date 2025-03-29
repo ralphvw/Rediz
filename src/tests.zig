@@ -75,3 +75,52 @@ test "Redis client fails to get value into stack allocated buffer because size i
 
     try testing.expectError(error.BufferTooSmall, result);
 }
+
+test "Redis client can set and get from a hashset" {
+    const allocator = std.testing.allocator;
+    var client = try RedisClient.connect(allocator, "redis://127.0.0.1:6379");
+    defer client.disconnect();
+
+    try client.hset("lumon_employees", "emp_1", "Mark S.");
+    const response = try client.hget("lumon_employees", "emp_1");
+    if (response) |v| {
+        try testing.expect(std.mem.eql(u8, v, "Mark S."));
+        allocator.free(v);
+    } else {
+        try testing.expect(false);
+    }
+}
+
+test "Redis client can set and get from a hashset into a stack allocated buffer" {
+    const allocator = std.testing.allocator;
+    var client = try RedisClient.connect(allocator, "redis://127.0.0.1:6379");
+    defer client.disconnect();
+
+    var buffer: [100]u8 = undefined;
+
+    try client.hset("lumon_employees", "emp_1", "Mark S.");
+
+    const response = try client.hgetInto("lumon_employees", "emp_1", &buffer);
+    if (response) |v| {
+        try testing.expect(std.mem.eql(u8, v, "Mark S."));
+    } else {
+        try testing.expect(false);
+    }
+}
+
+test "Redis client fails to get from a hashset into a stack allocated buffer" {
+    const allocator = std.testing.allocator;
+    var client = try RedisClient.connect(allocator, "redis://127.0.0.1:6379");
+    defer client.disconnect();
+
+    var buffer: [1]u8 = undefined;
+
+    try client.hset("lumon_employees", "emp_1", "Mark S.");
+
+    const response = try client.hgetInto("lumon_employees", "emp_1", &buffer);
+    if (response) {
+        try testing.expect(false);
+    } else {
+        try testing.expectError(error.BufferTooSmall, response);
+    }
+}

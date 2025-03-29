@@ -82,7 +82,7 @@ pub const RedisClient = struct {
             return null;
         }
 
-        const length = try std.fmt.parseInt(usize, len[2..], 10);
+        const length = std.fmt.parseInt(usize, len[2..], 10) catch return null;
         if (length == -1) return null;
 
         var data = try self.allocator.alloc(u8, length + 1);
@@ -93,6 +93,7 @@ pub const RedisClient = struct {
             const new_data = try self.allocator.alloc(u8, data.len - 1);
             std.mem.copyForwards(u8, new_data, data[1..]);
             self.allocator.free(data);
+            std.debug.print("New data:{s}\n", .{new_data});
             return new_data;
         }
 
@@ -122,6 +123,47 @@ pub const RedisClient = struct {
     /// Returns null if the key does not exist.
     pub fn getInto(self: *Self, key: []const u8, buffer: []u8) !?[]const u8 {
         try self.sendCommand(&[_][]const u8{ "GET", key });
+
+        const result = try self.readBulkString();
+        if (result == null) return null;
+
+        const value = result.?;
+
+        if (buffer.len < value.len) {
+            self.allocator.free(value);
+            return error.BufferTooSmall;
+        }
+
+        std.mem.copyForwards(u8, buffer[0..value.len], value);
+        self.allocator.free(value);
+
+        return buffer[0..value.len];
+    }
+
+    /// Sets a field in a Redis hash.
+    /// Equivalent to: HSET key field value
+    pub fn hset(self: *Self, key: []const u8, field: []const u8, value: []const u8) !void {
+        try self.sendCommand(&[_][]const u8{ "HSET", key, field, value });
+        const response = try self.readSimpleString();
+        defer self.allocator.free(response);
+        if (!std.mem.startsWith(u8, response, ":")) {
+            return error.RedisError;
+        }
+    }
+
+    /// Gets the value of a field in a Redis hash.
+    /// Returns null if field or key doesn't exist.
+    /// Caller must free the returned value.
+    pub fn hget(self: *Self, key: []const u8, field: []const u8) !?[]const u8 {
+        try self.sendCommand(&[_][]const u8{ "HGET", key, field });
+        return try self.readBulkString();
+    }
+
+    /// Gets the value of a field in a Redis hash and copies it into the provided buffer.
+    /// Returns null if the field or key doesn't exist.
+    /// Returns an error if the buffer is too small.
+    pub fn hgetInto(self: *Self, key: []const u8, field: []const u8, buffer: []u8) !?[]const u8 {
+        try self.sendCommand(&[_][]const u8{ "HGET", key, field });
 
         const result = try self.readBulkString();
         if (result == null) return null;
