@@ -8,8 +8,19 @@ on:
 
 jobs:
   test:
-    name: Run zig tests
+    name: Run zig tests with Redis
     runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -18,7 +29,18 @@ jobs:
       - name: Set up Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
-          version: 0.13.0 # or "master" if you're using the latest nightly
+          version: 0.13.0
+
+      - name: Wait for Redis
+        run: |
+          for i in {1..10}; do
+            if redis-cli ping | grep -q PONG; then
+              echo "Redis is up"
+              break
+            fi
+            echo "Waiting for Redis..."
+            sleep 1
+          done
 
       - name: Run zig test
-        run: zig test src/tests.zig
+        run: zig test src/tests.zig --test-no-strip --verbose
