@@ -26,14 +26,20 @@ pub fn main() !void {
     var client = try RedisClient.connect(allocator, "redis://127.0.0.1:6379");
     defer client.disconnect();
 
-    // Set and get value
+    // Set a key-value pair
     try client.set("zig_test", "");
+
+    // Get value into a heap-allocated buffer (caller must free)
     const value = try client.get("zig_test");
 
     if (value) |v| {
         std.debug.print("Got value: {s}\n", .{v});
-        allocator.free(v); // *Make sure to free the result
+        allocator.free(v); // Caller must free
     }
+
+    // Get value into a stack allocated buffer
+    var buffer: [100]u8 = undefined;
+    const response = try client.getInto("db_test_key", buffer[0..]);
 }
 ```
 

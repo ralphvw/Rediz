@@ -9,6 +9,13 @@ pub const RedisClient = struct {
 
     const Self = @This();
 
+    /// Connect to a Redis server using the provided URI.
+    /// The URI should be in the format: redis://[username:password@]host[:port][/db]
+    /// If the port is not specified, it defaults to 6379.
+    /// If the database is not specified, it defaults to 0.
+    /// If the username is not specified, it defaults to an empty string.
+    /// If the password is not specified, it defaults to an empty string.
+    /// The function returns a RedisClient instance on success or an error on failure.
     pub fn connect(allocator: mem.Allocator, uri: []const u8) !Self {
         const parsed_uri = try Uri.parse(uri);
         const port = parsed_uri.port orelse 6379;
@@ -35,10 +42,12 @@ pub const RedisClient = struct {
         return client;
     }
 
+    /// Disconnect from the Redis server.
     pub fn disconnect(self: *Self) void {
         self.stream.close();
     }
 
+    /// Send a command to the Redis server.
     pub fn sendCommand(self: *Self, args: []const []const u8) !void {
         var writer = self.stream.writer();
         try writer.print("*{d}\r\n", .{args.len});
@@ -49,6 +58,7 @@ pub const RedisClient = struct {
         }
     }
 
+    /// Read a simple string response from the Redis server.
     pub fn readSimpleString(self: *Self) ![]const u8 {
         var reader = self.stream.reader();
         const line = try reader.readUntilDelimiterAlloc(self.allocator, '\r', 1024);
@@ -63,6 +73,7 @@ pub const RedisClient = struct {
         return line;
     }
 
+    /// Read a bulk string response from the Redis server.
     fn readBulkString(self: *Self) !?[]const u8 {
         var reader = self.stream.reader();
         const len = try reader.readUntilDelimiterAlloc(self.allocator, '\r', 1024);
@@ -88,6 +99,7 @@ pub const RedisClient = struct {
         return data;
     }
 
+    /// Sets a key-value pair in Redis.
     pub fn set(self: *Self, key: []const u8, value: []const u8) !void {
         try self.sendCommand(&[_][]const u8{ "SET", key, value });
         const response = try self.readSimpleString();
@@ -97,11 +109,37 @@ pub const RedisClient = struct {
         }
     }
 
+    /// Gets the value of a key from Redis.
+    /// Retuns an allocated string. Remember to free it after use.
+    /// Returns null if the key does not exist.
     pub fn get(self: *Self, key: []const u8) !?[]const u8 {
         try self.sendCommand(&[_][]const u8{ "GET", key });
         return try self.readBulkString();
     }
 
+    /// Gets the value of a key from Redis and copies it into the provided buffer.
+    /// Returns an error if the buffer is too small.
+    /// Returns null if the key does not exist.
+    pub fn getInto(self: *Self, key: []const u8, buffer: []u8) !?[]const u8 {
+        try self.sendCommand(&[_][]const u8{ "GET", key });
+
+        const result = try self.readBulkString();
+        if (result == null) return null;
+
+        const value = result.?;
+
+        if (buffer.len < value.len) {
+            self.allocator.free(value);
+            return error.BufferTooSmall;
+        }
+
+        std.mem.copyForwards(u8, buffer[0..value.len], value);
+        self.allocator.free(value);
+
+        return buffer[0..value.len];
+    }
+
+    /// Authenticates with the Redis server using the provided password.
     fn auth(self: *Self, password: []const u8) !void {
         try self.sendCommand(&[_][]const u8{ "AUTH", password });
         const response = try self.readSimpleString();
@@ -111,6 +149,7 @@ pub const RedisClient = struct {
         }
     }
 
+    /// Selects a Redis database.
     pub fn select(self: *Self, db: u8) !void {
         var buf: [16]u8 = undefined;
         const db_str = try std.fmt.bufPrint(&buf, "{}", .{db});
@@ -122,6 +161,7 @@ pub const RedisClient = struct {
         }
     }
 
+    /// Helper function to check if a byte array contains a specific character.
     fn containsChar(input: []const u8, target: u8) bool {
         for (input) |char| {
             if (char == target) {

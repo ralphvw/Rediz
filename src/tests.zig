@@ -52,3 +52,26 @@ test "RedisClient can select a database" {
     try testing.expect(value != null);
     try testing.expect(std.mem.eql(u8, value.?, "db_test_value"));
 }
+
+test "Redis client can get value into a stack allocated buffer" {
+    var client = try RedisClient.connect(std.testing.allocator, "redis://127.0.0.1:6379");
+    defer client.disconnect();
+
+    try client.set("db_test_key", "db_test_value");
+    var buffer: [100]u8 = undefined;
+    const response = try client.getInto("db_test_key", buffer[0..]);
+    try testing.expect(std.mem.eql(u8, response.?, "db_test_value"));
+}
+
+test "Redis client fails to get value into stack allocated buffer because size is too small" {
+    var client = try RedisClient.connect(std.testing.allocator, "redis://127.0.0.1:6379");
+    defer client.disconnect();
+
+    try client.set("db_test_key", "db_test_value");
+
+    var buffer: [1]u8 = undefined;
+
+    const result = client.getInto("db_test_key", buffer[0..]);
+
+    try testing.expectError(error.BufferTooSmall, result);
+}
