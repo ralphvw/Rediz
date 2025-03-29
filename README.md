@@ -39,7 +39,10 @@ pub fn main() !void {
 
     // Get value into a stack allocated buffer
     var buffer: [100]u8 = undefined;
-    const response = try client.getInto("db_test_key", buffer[0..]);
+    var response: []const u8 = undefined;
+    if (try client.getInto("some_key", buffer[0..])) |v| {
+        response = v;
+    }
 }
 ```
 
