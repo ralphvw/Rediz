@@ -36,7 +36,7 @@ test "RedisClient handles missing keys" {
 }
 
 test "RedisClient fails authentication with wrong password" {
-    const result = RedisClient.connect(std.testing.allocator, "redis://:wrongpass@127.0.0.1:6379");
+    const result = RedisClient.connect(std.testing.allocator, "redis://:wrongpasscallll@127.0.0.1:6379");
     try testing.expectError(error.AuthFailed, result);
 }
 
