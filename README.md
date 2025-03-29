@@ -6,6 +6,7 @@ A Zig library for interacting with Redis.
 
 - Connect to Redis
 - `SET` and `GET` commands
+- `HSET` and `HGET` commands
 
 ## Installation
 
