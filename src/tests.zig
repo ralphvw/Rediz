@@ -6,7 +6,12 @@ test "RedisClient can connect and disconnect" {
     var client = try RedisClient.connect(std.testing.allocator, "redis://127.0.0.1:6379");
     defer client.disconnect();
 
-    try testing.expect(client.stream.handle != undefined);
+    // Send a PING to confirm connection
+    try client.sendCommand(&[_][]const u8{"PING"});
+    const response = try client.readSimpleString();
+    defer std.testing.allocator.free(response);
+
+    try testing.expect(std.mem.eql(u8, response, "+PONG"));
 }
 
 test "RedisClient can set and get a key" {

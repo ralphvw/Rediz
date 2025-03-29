@@ -39,7 +39,7 @@ pub const RedisClient = struct {
         self.stream.close();
     }
 
-    fn sendCommand(self: *Self, args: []const []const u8) !void {
+    pub fn sendCommand(self: *Self, args: []const []const u8) !void {
         var writer = self.stream.writer();
         std.debug.print("Sending command: ", .{});
         for (args, 0..) |arg, i| {
@@ -55,7 +55,7 @@ pub const RedisClient = struct {
         }
     }
 
-    fn readSimpleString(self: *Self) ![]const u8 {
+    pub fn readSimpleString(self: *Self) ![]const u8 {
         var reader = self.stream.reader();
         const line = try reader.readUntilDelimiterAlloc(self.allocator, '\r', 1024);
         // skip bytes if line string starts with '\n'

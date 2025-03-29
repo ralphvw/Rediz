@@ -17,7 +17,7 @@ jobs:
         ports:
           - 6379:6379
         options: >-
-          --health-cmd "redis-cli ping"
+          --health-cmd "redis-cli ping || exit 1"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
@@ -30,17 +30,6 @@ jobs:
         uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.13.0
-
-      - name: Wait for Redis
-        run: |
-          for i in {1..20}; do
-            if redis-cli ping | grep -q PONG; then
-              echo "Redis is up"
-              break
-            fi
-            echo "Waiting for Redis..."
-            sleep 1
-          done
 
       - name: Run zig test
         run: zig test src/tests.zig
