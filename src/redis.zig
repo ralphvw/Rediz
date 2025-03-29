@@ -41,12 +41,6 @@ pub const RedisClient = struct {
 
     pub fn sendCommand(self: *Self, args: []const []const u8) !void {
         var writer = self.stream.writer();
-        std.debug.print("Sending command: ", .{});
-        for (args, 0..) |arg, i| {
-            std.debug.print("{s}", .{arg});
-            if (i < args.len - 1) std.debug.print(" ", .{});
-        }
-        std.debug.print("\n", .{});
         try writer.print("*{d}\r\n", .{args.len});
         for (args) |arg| {
             try writer.print("${d}\r\n", .{arg.len});
@@ -65,8 +59,7 @@ pub const RedisClient = struct {
             self.allocator.free(line);
             return new_line;
         }
-        // try reader.skipBytes(1, .{}); // skip '\n'
-        std.debug.print("Simple string raw: \"{s}\"\n", .{line});
+
         return line;
     }
 
@@ -89,7 +82,6 @@ pub const RedisClient = struct {
             const new_data = try self.allocator.alloc(u8, data.len - 1);
             std.mem.copyForwards(u8, new_data, data[1..]);
             self.allocator.free(data);
-            std.debug.print("Response after get: {s}\n", .{new_data});
             return new_data;
         }
 
@@ -99,7 +91,6 @@ pub const RedisClient = struct {
     pub fn set(self: *Self, key: []const u8, value: []const u8) !void {
         try self.sendCommand(&[_][]const u8{ "SET", key, value });
         const response = try self.readSimpleString();
-        std.debug.print("Response: {s}", .{response});
         defer self.allocator.free(response);
         if (!mem.eql(u8, response, "+OK")) {
             return error.RedisError;
