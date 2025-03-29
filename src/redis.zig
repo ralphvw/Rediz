@@ -93,7 +93,6 @@ pub const RedisClient = struct {
             const new_data = try self.allocator.alloc(u8, data.len - 1);
             std.mem.copyForwards(u8, new_data, data[1..]);
             self.allocator.free(data);
-            std.debug.print("New data:{s}\n", .{new_data});
             return new_data;
         }
 

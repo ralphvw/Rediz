@@ -36,7 +36,7 @@ test "RedisClient handles missing keys" {
 }
 
 test "RedisClient fails authentication with wrong password" {
-    const result = RedisClient.connect(std.testing.allocator, "redis://:wrongpasscallll@127.0.0.1:6379");
+    const result = RedisClient.connect(std.testing.allocator, "redis://:wrongpass@127.0.0.1:6379");
     try testing.expectError(error.AuthFailed, result);
 }
 
@@ -117,10 +117,7 @@ test "Redis client fails to get from a hashset into a stack allocated buffer" {
 
     try client.hset("lumon_employees", "emp_1", "Mark S.");
 
-    const response = try client.hgetInto("lumon_employees", "emp_1", &buffer);
-    if (response) |_| {
-        try testing.expect(false);
-    } else {
-        try testing.expectError(error.BufferTooSmall, response);
-    }
+    const response = client.hgetInto("lumon_employees", "emp_1", &buffer);
+
+    try testing.expectError(error.BufferTooSmall, response);
 }
