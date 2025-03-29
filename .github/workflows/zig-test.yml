@@ -1,0 +1,24 @@
+name: Zig Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Run zig tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.13.0 # or "master" if you're using the latest nightly
+
+      - name: Run zig test
+        run: zig test src/tests.zig

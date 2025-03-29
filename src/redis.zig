@@ -120,7 +120,7 @@ pub const RedisClient = struct {
         }
     }
 
-    fn select(self: *Self, db: u8) !void {
+    pub fn select(self: *Self, db: u8) !void {
         var buf: [16]u8 = undefined;
         const db_str = try std.fmt.bufPrint(&buf, "{}", .{db});
         try self.sendCommand(&[_][]const u8{ "SELECT", db_str });
