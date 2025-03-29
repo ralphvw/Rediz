@@ -35,13 +35,15 @@ test "RedisClient fails authentication with wrong password" {
     try testing.expectError(error.AuthFailed, result);
 }
 
-// test "RedisClient can select a database" {
-//     var client = try RedisClient.connect(std.testing.allocator, "redis://127.0.0.1:6379/2");
-//     defer client.disconnect();
+test "RedisClient can select a database" {
+    var client = try RedisClient.connect(std.testing.allocator, "redis://127.0.0.1:6379/2");
+    defer client.disconnect();
 
-//     try client.set("db_test_key", "db_test_value");
-//     const value = try client.get("db_test_key");
+    try client.set("db_test_key", "db_test_value");
+    const value = try client.get("db_test_key");
 
-//     try testing.expect(value != null);
-//     try testing.expect(std.mem.eql(u8, value.?, "db_test_value"));
-// }
+    defer std.testing.allocator.free(value.?);
+
+    try testing.expect(value != null);
+    try testing.expect(std.mem.eql(u8, value.?, "db_test_value"));
+}

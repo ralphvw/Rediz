@@ -41,6 +41,12 @@ pub const RedisClient = struct {
 
     fn sendCommand(self: *Self, args: []const []const u8) !void {
         var writer = self.stream.writer();
+        std.debug.print("Sending command: ", .{});
+        for (args, 0..) |arg, i| {
+            std.debug.print("{s}", .{arg});
+            if (i < args.len - 1) std.debug.print(" ", .{});
+        }
+        std.debug.print("\n", .{});
         try writer.print("*{d}\r\n", .{args.len});
         for (args) |arg| {
             try writer.print("${d}\r\n", .{arg.len});
@@ -51,7 +57,17 @@ pub const RedisClient = struct {
 
     fn readSimpleString(self: *Self) ![]const u8 {
         var reader = self.stream.reader();
-        return reader.readUntilDelimiterAlloc(self.allocator, '\r', 1024);
+        const line = try reader.readUntilDelimiterAlloc(self.allocator, '\r', 1024);
+        // skip bytes if line string starts with '\n'
+        if (line.len > 0 and line[0] == '\n') {
+            const new_line = try self.allocator.alloc(u8, line.len - 1);
+            std.mem.copyForwards(u8, new_line, line[1..]);
+            self.allocator.free(line);
+            return new_line;
+        }
+        // try reader.skipBytes(1, .{}); // skip '\n'
+        std.debug.print("Simple string raw: \"{s}\"\n", .{line});
+        return line;
     }
 
     fn readBulkString(self: *Self) !?[]const u8 {
@@ -73,6 +89,7 @@ pub const RedisClient = struct {
             const new_data = try self.allocator.alloc(u8, data.len - 1);
             std.mem.copyForwards(u8, new_data, data[1..]);
             self.allocator.free(data);
+            std.debug.print("Response after get: {s}\n", .{new_data});
             return new_data;
         }
 
