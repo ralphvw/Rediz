@@ -43,4 +43,4 @@ jobs:
           done
 
       - name: Run zig test
-        run: zig test src/tests.zig --test-no-strip --verbose
+        run: zig test src/tests.zig
