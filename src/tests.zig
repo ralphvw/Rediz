@@ -7,7 +7,7 @@ test "RedisClient can connect and disconnect" {
     defer client.disconnect();
 
     // Send a PING to confirm connection
-    try client.sendCommand(&[_][]const u8{"PING"});
+    try client.sendCommand(1, .{"PING"});
     const response = try client.readSimpleString();
     defer std.testing.allocator.free(response);
 

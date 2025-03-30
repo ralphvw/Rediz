@@ -48,10 +48,10 @@ pub const RedisClient = struct {
     }
 
     /// Send a command to the Redis server.
-    pub fn sendCommand(self: *Self, args: []const []const u8) !void {
+    pub fn sendCommand(self: *Self, comptime N: usize, args: [N][]const u8) !void {
         var writer = self.stream.writer();
-        try writer.print("*{d}\r\n", .{args.len});
-        for (args) |arg| {
+        try writer.print("*{d}\r\n", .{N});
+        inline for (args) |arg| {
             try writer.print("${d}\r\n", .{arg.len});
             try writer.writeAll(arg);
             try writer.writeAll("\r\n");
@@ -101,7 +101,7 @@ pub const RedisClient = struct {
 
     /// Sets a key-value pair in Redis.
     pub fn set(self: *Self, key: []const u8, value: []const u8) !void {
-        try self.sendCommand(&[_][]const u8{ "SET", key, value });
+        try self.sendCommand(3, .{ "SET", key, value });
         const response = try self.readSimpleString();
         defer self.allocator.free(response);
         if (!mem.eql(u8, response, "+OK")) {
@@ -113,7 +113,7 @@ pub const RedisClient = struct {
     /// Retuns an allocated string. Remember to free it after use.
     /// Returns null if the key does not exist.
     pub fn get(self: *Self, key: []const u8) !?[]const u8 {
-        try self.sendCommand(&[_][]const u8{ "GET", key });
+        try self.sendCommand(2, .{ "GET", key });
         return try self.readBulkString();
     }
 
@@ -121,7 +121,7 @@ pub const RedisClient = struct {
     /// Returns an error if the buffer is too small.
     /// Returns null if the key does not exist.
     pub fn getInto(self: *Self, key: []const u8, buffer: []u8) !?[]const u8 {
-        try self.sendCommand(&[_][]const u8{ "GET", key });
+        try self.sendCommand(2, .{ "GET", key });
 
         const result = try self.readBulkString();
         if (result == null) return null;
@@ -142,7 +142,7 @@ pub const RedisClient = struct {
     /// Sets a field in a Redis hash.
     /// Equivalent to: HSET key field value
     pub fn hset(self: *Self, key: []const u8, field: []const u8, value: []const u8) !void {
-        try self.sendCommand(&[_][]const u8{ "HSET", key, field, value });
+        try self.sendCommand(4, .{ "HSET", key, field, value });
         const response = try self.readSimpleString();
         defer self.allocator.free(response);
         if (!std.mem.startsWith(u8, response, ":")) {
@@ -154,7 +154,7 @@ pub const RedisClient = struct {
     /// Returns null if field or key doesn't exist.
     /// Caller must free the returned value.
     pub fn hget(self: *Self, key: []const u8, field: []const u8) !?[]const u8 {
-        try self.sendCommand(&[_][]const u8{ "HGET", key, field });
+        try self.sendCommand(3, .{ "HGET", key, field });
         return try self.readBulkString();
     }
 
@@ -162,7 +162,7 @@ pub const RedisClient = struct {
     /// Returns null if the field or key doesn't exist.
     /// Returns an error if the buffer is too small.
     pub fn hgetInto(self: *Self, key: []const u8, field: []const u8, buffer: []u8) !?[]const u8 {
-        try self.sendCommand(&[_][]const u8{ "HGET", key, field });
+        try self.sendCommand(3, .{ "HGET", key, field });
 
         const result = try self.readBulkString();
         if (result == null) return null;
@@ -182,7 +182,7 @@ pub const RedisClient = struct {
 
     /// Authenticates with the Redis server using the provided password.
     fn auth(self: *Self, password: []const u8) !void {
-        try self.sendCommand(&[_][]const u8{ "AUTH", password });
+        try self.sendCommand(2, .{ "AUTH", password });
         const response = try self.readSimpleString();
         defer self.allocator.free(response);
         if (!mem.eql(u8, response, "+OK")) {
@@ -194,7 +194,7 @@ pub const RedisClient = struct {
     pub fn select(self: *Self, db: u8) !void {
         var buf: [16]u8 = undefined;
         const db_str = try std.fmt.bufPrint(&buf, "{}", .{db});
-        try self.sendCommand(&[_][]const u8{ "SELECT", db_str });
+        try self.sendCommand(2, .{ "SELECT", db_str });
         const response = try self.readSimpleString();
         defer self.allocator.free(response);
         if (!mem.eql(u8, response, "+OK")) {
