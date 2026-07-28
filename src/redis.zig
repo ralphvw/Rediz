@@ -1,13 +1,20 @@
 const std = @import("std");
-const net = std.net;
+const Io = std.Io;
+const net = std.Io.net;
 const mem = std.mem;
 const Uri = std.Uri;
 
 pub const RedisClient = struct {
+    io: Io,
     stream: net.Stream,
+    reader: net.Stream.Reader,
+    writer: net.Stream.Writer,
     allocator: mem.Allocator,
 
     const Self = @This();
+
+    const read_buffer_size = 4096;
+    const write_buffer_size = 4096;
 
     /// Connect to a Redis server using the provided URI.
     /// The URI should be in the format: redis://[username:password@]host[:port][/db]
@@ -16,16 +23,24 @@ pub const RedisClient = struct {
     /// If the username is not specified, it defaults to an empty string.
     /// If the password is not specified, it defaults to an empty string.
     /// The function returns a RedisClient instance on success or an error on failure.
-    pub fn connect(allocator: mem.Allocator, uri: []const u8) !Self {
+    pub fn connect(allocator: mem.Allocator, io: Io, uri: []const u8) !Self {
         const parsed_uri = try Uri.parse(uri);
         const port = parsed_uri.port orelse 6379;
         const host = parsed_uri.host.?;
-        const address = try net.Address.resolveIp(host.percent_encoded, port);
 
-        const stream = try net.tcpConnectToAddress(address);
+        const address = try net.IpAddress.resolve(io, host.percent_encoded, port);
+        const stream = try net.IpAddress.connect(&address, io, .{ .mode = .stream });
+
+        const read_buf = try allocator.alloc(u8, read_buffer_size);
+        errdefer allocator.free(read_buf);
+        const write_buf = try allocator.alloc(u8, write_buffer_size);
+        errdefer allocator.free(write_buf);
 
         var client = Self{
+            .io = io,
             .stream = stream,
+            .reader = stream.reader(io, read_buf),
+            .writer = stream.writer(io, write_buf),
             .allocator = allocator,
         };
 
@@ -44,57 +59,53 @@ pub const RedisClient = struct {
 
     /// Disconnect from the Redis server.
     pub fn disconnect(self: *Self) void {
-        self.stream.close();
+        self.stream.close(self.io);
+        self.allocator.free(self.reader.interface.buffer);
+        self.allocator.free(self.writer.interface.buffer);
     }
 
     /// Send a command to the Redis server.
     pub fn sendCommand(self: *Self, comptime N: usize, args: [N][]const u8) !void {
-        var writer = self.stream.writer();
-        try writer.print("*{d}\r\n", .{N});
+        const w = &self.writer.interface;
+        try w.print("*{d}\r\n", .{N});
         inline for (args) |arg| {
-            try writer.print("${d}\r\n", .{arg.len});
-            try writer.writeAll(arg);
-            try writer.writeAll("\r\n");
+            try w.print("${d}\r\n", .{arg.len});
+            try w.writeAll(arg);
+            try w.writeAll("\r\n");
         }
+        try w.flush();
+    }
+
+    /// Reads one CRLF-terminated line from the server, without the trailing "\r\n".
+    /// The returned slice is only valid until the next read call.
+    fn readLine(self: *Self) ![]u8 {
+        const r = &self.reader.interface;
+        const line = try r.takeDelimiterInclusive('\n');
+        var end = line.len;
+        if (end > 0 and line[end - 1] == '\n') end -= 1;
+        if (end > 0 and line[end - 1] == '\r') end -= 1;
+        return line[0..end];
     }
 
     /// Read a simple string response from the Redis server.
     pub fn readSimpleString(self: *Self) ![]const u8 {
-        var reader = self.stream.reader();
-        const line = try reader.readUntilDelimiterAlloc(self.allocator, '\r', 1024);
-        // skip bytes if line string starts with '\n'
-        if (line.len > 0 and line[0] == '\n') {
-            const new_line = try self.allocator.alloc(u8, line.len - 1);
-            std.mem.copyForwards(u8, new_line, line[1..]);
-            self.allocator.free(line);
-            return new_line;
-        }
-
-        return line;
+        const line = try self.readLine();
+        return try self.allocator.dupe(u8, line);
     }
 
     /// Read a bulk string response from the Redis server.
     fn readBulkString(self: *Self) !?[]const u8 {
-        var reader = self.stream.reader();
-        const len = try reader.readUntilDelimiterAlloc(self.allocator, '\r', 1024);
-        defer self.allocator.free(len);
-        if (containsChar(len, '-')) {
-            return null;
-        }
+        const line = try self.readLine();
+        if (containsChar(line, '-')) return null;
 
-        const length = std.fmt.parseInt(usize, len[2..], 10) catch return null;
-        if (length == -1) return null;
+        const length = std.fmt.parseInt(usize, line[1..], 10) catch return null;
 
-        var data = try self.allocator.alloc(u8, length + 1);
+        const data = try self.allocator.alloc(u8, length);
         errdefer self.allocator.free(data);
-        try reader.readNoEof(data);
-        try reader.skipBytes(2, .{});
-        if (data.len > 0 and data[0] == '\n') {
-            const new_data = try self.allocator.alloc(u8, data.len - 1);
-            std.mem.copyForwards(u8, new_data, data[1..]);
-            self.allocator.free(data);
-            return new_data;
-        }
+
+        const r = &self.reader.interface;
+        try r.readSliceAll(data);
+        try r.discardAll(2); // trailing "\r\n"
 
         return data;
     }

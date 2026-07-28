@@ -6,7 +6,11 @@
     //
     // It is redundant to include "zig" in this name because it is already
     // within the Zig package namespace.
-    .name = "rediz",
+    .name = .rediz,
+
+    // Randomly generated identity that stays constant across renames.
+    // https://ziglang.org/documentation/master/#Package-Fingerprint
+    .fingerprint = 0x2f968b3a8d0c331,
 
     // This is a [Semantic Version](https://semver.org/).
     // In a future version of Zig it will be used for package deduplication.
