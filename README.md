@@ -19,7 +19,7 @@ Operations per second on a local server (higher is better). See [BENCHMARKS.md](
 | Version | Zig | `SET`/`GET` | `HSET`/`HGET` | `SET`/`GET` 64 KiB |
 |---|---|---|---|---|
 | `zig-0.13` branch | 0.13.0 | 24 | 24 | 25 |
-| `main` | 0.16.0 | 7,468 | 8,780 | 4,036 |
+| `main` | 0.16.0 | 14,092 | 15,389 | 8,895 |
 
 ## Installation
 
