@@ -68,4 +68,15 @@ pub fn build(b: *std.Build) void {
     // This will evaluate the `run` step rather than the default, which is "install".
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    const bench = b.addExecutable(.{
+        .name = "rediz-bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/bench.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+        }),
+    });
+    const bench_step = b.step("bench", "Run benchmarks against a local Redis on 127.0.0.1:6379");
+    bench_step.dependOn(&b.addRunArtifact(bench).step);
 }

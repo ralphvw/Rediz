@@ -1,0 +1,43 @@
+name: Zig Benchmark
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  bench:
+    name: Compare benchmarks against base
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v3
+        with:
+          path: head
+
+      - name: Checkout base
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.base_ref }}
+          path: base
+
+      - name: Set up Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Compare benchmarks
+        run: |
+          set -o pipefail
+          bash head/scripts/bench-compare.sh base head 30 | tee -a "$GITHUB_STEP_SUMMARY"

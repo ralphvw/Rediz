@@ -12,6 +12,15 @@ A Zig library for interacting with Redis.
 
 Zig 0.16.0 or newer. For Zig 0.13, use the [`zig-0.13`](https://github.com/ralphvw/Rediz/tree/zig-0.13) branch.
 
+## Performance
+
+Operations per second on a local server (higher is better). See [BENCHMARKS.md](./BENCHMARKS.md) for details.
+
+| Version | Zig | `SET`/`GET` | `HSET`/`HGET` | `SET`/`GET` 64 KiB |
+|---|---|---|---|---|
+| `zig-0.13` branch | 0.13.0 | 24 | 24 | 25 |
+| `main` | 0.16.0 | 7,468 | 8,780 | 4,036 |
+
 ## Installation
 
 `zig fetch --save git+https://github.com/ralphvw/rediz#main`
