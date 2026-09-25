@@ -14,8 +14,12 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
 cp "$head_dir/src/bench.zig" "$base_dir/src/bench.zig"
-(cd "$base_dir" && zig build-exe -O ReleaseFast src/bench.zig -femit-bin="$work/base")
 (cd "$head_dir" && zig build-exe -O ReleaseFast src/bench.zig -femit-bin="$work/head")
+
+if ! (cd "$base_dir" && zig build-exe -O ReleaseFast src/bench.zig -femit-bin="$work/base"); then
+    echo "Base does not build with this Zig version; skipping comparison."
+    exit 0
+fi
 
 for i in $(seq "$runs"); do
     "$work/base" 2>&1 | sed 's/^/base /' >>"$work/results"
