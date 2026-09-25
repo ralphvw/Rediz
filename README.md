@@ -29,7 +29,7 @@ Operations per second on a local server (higher is better). See [BENCHMARKS.md](
 
 ```zig
 const std = @import("std");
-const RedisClient = @import("rediz").RedisClient;
+const rediz = @import("rediz");
 
 pub fn main() !void {
     // Setting up the allocator
@@ -43,7 +43,7 @@ pub fn main() !void {
     const io = threaded.io();
 
     // Connect to Redis (example: redis://password@localhost:6379/0)
-    var client = try RedisClient.connect(allocator, io, "redis://127.0.0.1:6379");
+    var client = try rediz.Client.connect(allocator, io, "redis://127.0.0.1:6379");
     defer client.disconnect();
 
     // Set a key-value pair

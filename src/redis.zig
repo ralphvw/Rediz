@@ -220,3 +220,5 @@ pub const RedisClient = struct {
         }
     }
 };
+
+pub const Client = RedisClient;
