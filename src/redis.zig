@@ -120,8 +120,7 @@ pub const RedisClient = struct {
     /// Sets a key-value pair in Redis.
     pub fn set(self: *Self, key: []const u8, value: []const u8) !void {
         try self.sendCommand(3, .{ "SET", key, value });
-        const response = try self.readSimpleString();
-        defer self.allocator.free(response);
+        const response = try self.readLine();
         if (!mem.eql(u8, response, "+OK")) {
             return error.RedisError;
         }
@@ -161,8 +160,7 @@ pub const RedisClient = struct {
     /// Equivalent to: HSET key field value
     pub fn hset(self: *Self, key: []const u8, field: []const u8, value: []const u8) !void {
         try self.sendCommand(4, .{ "HSET", key, field, value });
-        const response = try self.readSimpleString();
-        defer self.allocator.free(response);
+        const response = try self.readLine();
         if (!std.mem.startsWith(u8, response, ":")) {
             return error.RedisError;
         }
@@ -201,8 +199,7 @@ pub const RedisClient = struct {
     /// Authenticates with the Redis server using the provided password.
     fn auth(self: *Self, password: []const u8) !void {
         try self.sendCommand(2, .{ "AUTH", password });
-        const response = try self.readSimpleString();
-        defer self.allocator.free(response);
+        const response = try self.readLine();
         if (!mem.eql(u8, response, "+OK")) {
             return error.AuthFailed;
         }
@@ -213,8 +210,7 @@ pub const RedisClient = struct {
         var buf: [16]u8 = undefined;
         const db_str = try std.fmt.bufPrint(&buf, "{}", .{db});
         try self.sendCommand(2, .{ "SELECT", db_str });
-        const response = try self.readSimpleString();
-        defer self.allocator.free(response);
+        const response = try self.readLine();
         if (!mem.eql(u8, response, "+OK")) {
             return error.SelectFailed;
         }
