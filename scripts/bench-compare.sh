@@ -37,6 +37,10 @@ failed=0
 for name in $(awk '{ print $2 }' "$work/results" | sort -u); do
     base=$(awk -v n="$name" '$1 == "base" && $2 == n { print $3 }' "$work/results" | best)
     head=$(awk -v n="$name" '$1 == "head" && $2 == n { print $3 }' "$work/results" | best)
+    if [ -z "$base" ] || [ -z "$head" ]; then
+        echo "| $name | ${base:-n/a} | ${head:-n/a} | n/a |"
+        continue
+    fi
     change=$(awk -v b="$base" -v h="$head" 'BEGIN { printf "%.1f", (h - b) / b * 100 }')
     echo "| $name | $base | $head | $change% |"
     if awk -v c="$change" -v t="$threshold" 'BEGIN { exit !(c < -t) }'; then

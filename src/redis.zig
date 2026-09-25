@@ -67,6 +67,12 @@ pub const RedisClient = struct {
 
     /// Send a command to the Redis server.
     pub fn sendCommand(self: *Self, comptime N: usize, args: [N][]const u8) !void {
+        try self.writeCommand(N, args);
+        try self.writer.interface.flush();
+    }
+
+    /// Encodes a command into the write buffer without flushing it.
+    fn writeCommand(self: *Self, comptime N: usize, args: [N][]const u8) !void {
         const w = &self.writer.interface;
         try w.print("*{d}\r\n", .{N});
         inline for (args) |arg| {
@@ -74,7 +80,12 @@ pub const RedisClient = struct {
             try w.writeAll(arg);
             try w.writeAll("\r\n");
         }
-        try w.flush();
+    }
+
+    /// Starts a pipeline: commands are queued locally and sent together by `exec`,
+    /// costing one network round trip for the whole batch.
+    pub fn pipeline(self: *Self) Pipeline {
+        return .{ .client = self };
     }
 
     /// Reads one CRLF-terminated line from the server, without the trailing "\r\n".
@@ -106,22 +117,43 @@ pub const RedisClient = struct {
         if (mem.eql(u8, line[1..], "-1")) return null;
 
         const length = std.fmt.parseInt(usize, line[1..], 10) catch return error.InvalidResponse;
+        return try self.readPayload(self.allocator, length);
+    }
 
-        const data = try self.allocator.alloc(u8, length);
-        errdefer self.allocator.free(data);
+    /// Reads `length` bytes of bulk string payload plus its trailing "\r\n".
+    fn readPayload(self: *Self, allocator: mem.Allocator, length: usize) ![]u8 {
+        const data = try allocator.alloc(u8, length);
+        errdefer allocator.free(data);
 
         const r = &self.reader.interface;
         try r.readSliceAll(data);
-        try r.discardAll(2); // trailing "\r\n"
+        try r.discardAll(2);
 
         return data;
+    }
+
+    /// Reads one reply of any type. Strings are allocated from `allocator`.
+    fn readReply(self: *Self, allocator: mem.Allocator) !Reply {
+        const line = try self.readLine();
+        if (line.len == 0) return error.InvalidResponse;
+        const body = line[1..];
+        switch (line[0]) {
+            '+' => return .{ .status = try allocator.dupe(u8, body) },
+            '-' => return .{ .err = try allocator.dupe(u8, body) },
+            ':' => return .{ .integer = std.fmt.parseInt(i64, body, 10) catch return error.InvalidResponse },
+            '$' => {
+                if (mem.eql(u8, body, "-1")) return .{ .bulk = null };
+                const length = std.fmt.parseInt(usize, body, 10) catch return error.InvalidResponse;
+                return .{ .bulk = try self.readPayload(allocator, length) };
+            },
+            else => return error.InvalidResponse,
+        }
     }
 
     /// Sets a key-value pair in Redis.
     pub fn set(self: *Self, key: []const u8, value: []const u8) !void {
         try self.sendCommand(3, .{ "SET", key, value });
-        const response = try self.readSimpleString();
-        defer self.allocator.free(response);
+        const response = try self.readLine();
         if (!mem.eql(u8, response, "+OK")) {
             return error.RedisError;
         }
@@ -161,8 +193,7 @@ pub const RedisClient = struct {
     /// Equivalent to: HSET key field value
     pub fn hset(self: *Self, key: []const u8, field: []const u8, value: []const u8) !void {
         try self.sendCommand(4, .{ "HSET", key, field, value });
-        const response = try self.readSimpleString();
-        defer self.allocator.free(response);
+        const response = try self.readLine();
         if (!std.mem.startsWith(u8, response, ":")) {
             return error.RedisError;
         }
@@ -201,8 +232,7 @@ pub const RedisClient = struct {
     /// Authenticates with the Redis server using the provided password.
     fn auth(self: *Self, password: []const u8) !void {
         try self.sendCommand(2, .{ "AUTH", password });
-        const response = try self.readSimpleString();
-        defer self.allocator.free(response);
+        const response = try self.readLine();
         if (!mem.eql(u8, response, "+OK")) {
             return error.AuthFailed;
         }
@@ -213,11 +243,82 @@ pub const RedisClient = struct {
         var buf: [16]u8 = undefined;
         const db_str = try std.fmt.bufPrint(&buf, "{}", .{db});
         try self.sendCommand(2, .{ "SELECT", db_str });
-        const response = try self.readSimpleString();
-        defer self.allocator.free(response);
+        const response = try self.readLine();
         if (!mem.eql(u8, response, "+OK")) {
             return error.SelectFailed;
         }
+    }
+};
+
+/// A single reply from the server.
+pub const Reply = union(enum) {
+    /// Simple string reply, without the leading '+' (e.g. "OK").
+    status: []const u8,
+    /// Error reply, without the leading '-' (e.g. "WRONGTYPE ...").
+    err: []const u8,
+    integer: i64,
+    /// Bulk string reply. Null when the key or field does not exist.
+    bulk: ?[]const u8,
+};
+
+/// The replies of an executed pipeline, in the order the commands were queued.
+/// All strings are owned by the `Replies` and are freed by `deinit`.
+pub const Replies = struct {
+    arena: std.heap.ArenaAllocator,
+    items: []const Reply,
+
+    pub fn deinit(self: *Replies) void {
+        self.arena.deinit();
+    }
+};
+
+/// A batch of commands sent to the server together.
+/// Keep batches modest: the server's replies are only read after every command
+/// has been written, so an enormous batch can fill both sides' socket buffers.
+pub const Pipeline = struct {
+    client: *RedisClient,
+    count: usize = 0,
+
+    /// Queues an arbitrary command.
+    pub fn command(self: *Pipeline, comptime N: usize, args: [N][]const u8) !void {
+        try self.client.writeCommand(N, args);
+        self.count += 1;
+    }
+
+    pub fn set(self: *Pipeline, key: []const u8, value: []const u8) !void {
+        try self.command(3, .{ "SET", key, value });
+    }
+
+    pub fn get(self: *Pipeline, key: []const u8) !void {
+        try self.command(2, .{ "GET", key });
+    }
+
+    pub fn hset(self: *Pipeline, key: []const u8, field: []const u8, value: []const u8) !void {
+        try self.command(4, .{ "HSET", key, field, value });
+    }
+
+    pub fn hget(self: *Pipeline, key: []const u8, field: []const u8) !void {
+        try self.command(3, .{ "HGET", key, field });
+    }
+
+    /// Sends all queued commands and reads one reply for each.
+    /// A Redis error reply is recorded as `.err` and does not stop the batch.
+    /// Only I/O and protocol failures make this return an error, after which the
+    /// connection should be discarded.
+    pub fn exec(self: *Pipeline) !Replies {
+        const count = self.count;
+        self.count = 0;
+
+        try self.client.writer.interface.flush();
+
+        var arena = std.heap.ArenaAllocator.init(self.client.allocator);
+        errdefer arena.deinit();
+        const allocator = arena.allocator();
+
+        const items = try allocator.alloc(Reply, count);
+        for (items) |*item| item.* = try self.client.readReply(allocator);
+
+        return .{ .arena = arena, .items = items };
     }
 };
 
