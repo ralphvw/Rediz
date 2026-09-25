@@ -209,3 +209,21 @@ test "RedisClient hash fields round-trip a value larger than the internal read b
     try testing.expect(response != null);
     try testing.expect(std.mem.eql(u8, response.?, value));
 }
+
+test "RedisClient returns RedisError when a bulk reply is an error" {
+    var client = try RedisClient.connect(std.testing.allocator, std.testing.io, "redis://127.0.0.1:6379");
+    defer client.disconnect();
+
+    try client.hset("wrongtype_hash", "field", "value");
+
+    try testing.expectError(error.RedisError, client.get("wrongtype_hash"));
+}
+
+test "RedisClient returns InvalidResponse when a bulk reply is malformed" {
+    var client = try RedisClient.connect(std.testing.allocator, std.testing.io, "redis://127.0.0.1:6379");
+    defer client.disconnect();
+
+    try client.sendCommand(1, .{"PING"});
+
+    try testing.expectError(error.InvalidResponse, client.get("any_key"));
+}

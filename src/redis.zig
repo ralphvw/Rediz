@@ -30,6 +30,7 @@ pub const RedisClient = struct {
 
         const address = try net.IpAddress.resolve(io, host.percent_encoded, port);
         const stream = try net.IpAddress.connect(&address, io, .{ .mode = .stream });
+        errdefer stream.close(io);
 
         const read_buf = try allocator.alloc(u8, read_buffer_size);
         errdefer allocator.free(read_buf);
@@ -96,9 +97,15 @@ pub const RedisClient = struct {
     /// Read a bulk string response from the Redis server.
     fn readBulkString(self: *Self) !?[]const u8 {
         const line = try self.readLine();
-        if (containsChar(line, '-')) return null;
+        if (line.len == 0) return error.InvalidResponse;
+        switch (line[0]) {
+            '$' => {},
+            '-' => return error.RedisError,
+            else => return error.InvalidResponse,
+        }
+        if (mem.eql(u8, line[1..], "-1")) return null;
 
-        const length = std.fmt.parseInt(usize, line[1..], 10) catch return null;
+        const length = std.fmt.parseInt(usize, line[1..], 10) catch return error.InvalidResponse;
 
         const data = try self.allocator.alloc(u8, length);
         errdefer self.allocator.free(data);
@@ -211,15 +218,5 @@ pub const RedisClient = struct {
         if (!mem.eql(u8, response, "+OK")) {
             return error.SelectFailed;
         }
-    }
-
-    /// Helper function to check if a byte array contains a specific character.
-    fn containsChar(input: []const u8, target: u8) bool {
-        for (input) |char| {
-            if (char == target) {
-                return true;
-            }
-        }
-        return false;
     }
 };
