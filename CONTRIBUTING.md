@@ -15,7 +15,7 @@ We welcome contributions of all kinds — whether it's fixing a bug, adding a fe
    git checkout -b feature/my-awesome-thing
    ```
 4. Make your changes
-5. Run the tests:
+5. Run the tests (requires Zig 0.16.0 and a Redis-compatible server on `127.0.0.1:6379`):
    ```sh
    zig test src/tests.zig
    ```

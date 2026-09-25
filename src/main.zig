@@ -1,13 +1,17 @@
 const std = @import("std");
-const RedisClient = @import("redis.zig").RedisClient;
+const rediz = @import("rediz");
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     const allocator = gpa.allocator();
     defer _ = gpa.deinit();
 
+    var threaded: std.Io.Threaded = .init(allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+
     // Connect to Redis (example: redis://password@localhost:6379/0)
-    var client = try RedisClient.connect(allocator, "redis://127.0.0.1:6379");
+    var client = try rediz.Client.connect(allocator, io, "redis://127.0.0.1:6379");
     defer client.disconnect();
 
     // Set and get value

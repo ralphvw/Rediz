@@ -1,14 +1,12 @@
-name: Zig Test
+name: Zig Benchmark
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
 jobs:
-  test:
-    name: Run zig tests with Redis
+  bench:
+    name: Compare benchmarks against base
     runs-on: ubuntu-latest
 
     services:
@@ -23,13 +21,23 @@ jobs:
           --health-retries 5
 
     steps:
-      - name: Checkout code
+      - name: Checkout PR
         uses: actions/checkout@v3
+        with:
+          path: head
+
+      - name: Checkout base
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.base_ref }}
+          path: base
 
       - name: Set up Zig
         uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.16.0
 
-      - name: Run zig test
-        run: zig test src/tests.zig
+      - name: Compare benchmarks
+        run: |
+          set -o pipefail
+          bash head/scripts/bench-compare.sh base head 30 | tee -a "$GITHUB_STEP_SUMMARY"

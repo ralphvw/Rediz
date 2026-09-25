@@ -12,13 +12,16 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib = b.addStaticLibrary(.{
-        .name = "rediz",
-        // In this case the main source file is merely a path, however, in more
-        // complicated build scripts, this could be a generated file.
+    const rediz_module = b.addModule("rediz", .{
         .root_source_file = b.path("src/redis.zig"),
         .target = target,
         .optimize = optimize,
+    });
+
+    const lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "rediz",
+        .root_module = rediz_module,
     });
 
     // This declares intent for the library to be installed into the standard
@@ -26,20 +29,16 @@ pub fn build(b: *std.Build) void {
     // running `zig build`).
     b.installArtifact(lib);
 
-    const rediz_module = b.addModule("rediz", .{
-        .root_source_file = b.path("src/redis.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    // Link module to both library and executable (optional)
-    lib.root_module.addImport("rediz", rediz_module);
-
-    const exe = b.addExecutable(.{
-        .name = "rediz-example",
+    const exe_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+    });
+    exe_module.addImport("rediz", rediz_module);
+
+    const exe = b.addExecutable(.{
+        .name = "rediz-example",
+        .root_module = exe_module,
     });
 
     // This declares intent for the executable to be installed into the
@@ -69,4 +68,15 @@ pub fn build(b: *std.Build) void {
     // This will evaluate the `run` step rather than the default, which is "install".
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    const bench = b.addExecutable(.{
+        .name = "rediz-bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/bench.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+        }),
+    });
+    const bench_step = b.step("bench", "Run benchmarks against a local Redis on 127.0.0.1:6379");
+    bench_step.dependOn(&b.addRunArtifact(bench).step);
 }

@@ -8,6 +8,19 @@ A Zig library for interacting with Redis.
 - `SET` and `GET` commands
 - `HSET` and `HGET` commands
 
+## Requirements
+
+Zig 0.16.0 or newer. For Zig 0.13, use the [`zig-0.13`](https://github.com/ralphvw/Rediz/tree/zig-0.13) branch.
+
+## Performance
+
+Operations per second on a local server (higher is better). See [BENCHMARKS.md](./BENCHMARKS.md) for details.
+
+| Version | Zig | `SET`/`GET` | `HSET`/`HGET` | `SET`/`GET` 64 KiB |
+|---|---|---|---|---|
+| `zig-0.13` branch | 0.13.0 | 24 | 24 | 25 |
+| `main` | 0.16.0 | 14,092 | 15,389 | 8,895 |
+
 ## Installation
 
 `zig fetch --save git+https://github.com/ralphvw/rediz#main`
@@ -16,15 +29,21 @@ A Zig library for interacting with Redis.
 
 ```zig
 const std = @import("std");
-const RedisClient = @import("Rediz").RedisClient;
+const rediz = @import("rediz");
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    // Setting up the allocator
+    var gpa = std.heap.DebugAllocator(.{}){};
     const allocator = gpa.allocator();
     defer _ = gpa.deinit();
 
+    // Setting up I/O
+    var threaded: std.Io.Threaded = .init(allocator, .{});
+    defer threaded.deinit();
+    const io = threaded.io();
+
     // Connect to Redis (example: redis://password@localhost:6379/0)
-    var client = try RedisClient.connect(allocator, "redis://127.0.0.1:6379");
+    var client = try rediz.Client.connect(allocator, io, "redis://127.0.0.1:6379");
     defer client.disconnect();
 
     // Set a key-value pair
@@ -54,10 +73,10 @@ You can include Rediz in your project by adding the following to your `build.zig
 ```zig
 const std = @import("std");
 
-pub fn build(b: *std.build.Builder) void {
+pub fn build(b: *std.Build) void {
     /// ... build script
 
-    const rediz = b.dependency("Rediz", .{
+    const rediz = b.dependency("rediz", .{
         .target = target,
         .optimize = optimize,
     });
