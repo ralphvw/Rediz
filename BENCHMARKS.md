@@ -1,12 +1,13 @@
 # Benchmarks
 
-Throughput of Rediz against a local Redis-compatible server, in operations per second (higher is better). Each workload is a sequence of blocking request/response round trips on a single connection, run for several rounds; the table shows the median.
+Throughput of Rediz against a local Redis-compatible server, in operations per second (higher is better). Each workload runs on a single connection for several rounds; the table shows the median. Unless noted, commands are blocking request/response round trips.
 
 | Workload | What it does |
 |---|---|
 | `set_get_small` | `SET` then `GET` of a 32-byte value |
 | `hset_hget_small` | `HSET` then `HGET` of a 32-byte value |
 | `set_get_64k` | `SET` then `GET` of a 64 KiB value |
+| `pipelined_set_get_small` | 50 `SET`/`GET` pairs (32-byte value) queued in a pipeline and sent in one round trip |
 
 ## Results
 
@@ -55,6 +56,19 @@ try w.flush();
 The whole command reaches the server in one segment, so the server replies immediately and the ACK rides on that reply instead of waiting on the delayed-ACK timer.
 
 Commands larger than the 4 KB buffer are flushed in several writes. The 64 KiB workload still runs at ~8,900 ops/s, so it is not hitting the stall, but the buffer is what protects small commands. Setting `TCP_NODELAY` in `connect` would make this independent of write patterns; it is not currently set.
+
+## Pipelining
+
+Once the per-command stall is gone, a single unpipelined command costs one network round trip (~70 µs here), which is nearly all kernel and server time, not client code. Pipelining removes the round trips instead of shaving them: `client.pipeline()` queues commands in the write buffer, and `exec()` sends them with one flush and reads all the replies.
+
+Measured back to back in one run on the same server:
+
+| Workload | ops/s |
+|---|---|
+| `set_get_small` (one at a time) | 7,383 |
+| `pipelined_set_get_small` (50 pairs per batch) | 384,667 |
+
+That is about 50x. Batches should stay modest, since replies are only read after every command in the batch has been written.
 
 ## Running
 

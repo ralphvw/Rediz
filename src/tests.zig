@@ -227,3 +227,89 @@ test "RedisClient returns InvalidResponse when a bulk reply is malformed" {
 
     try testing.expectError(error.InvalidResponse, client.get("any_key"));
 }
+
+test "Pipeline returns replies in order for mixed commands" {
+    var client = try RedisClient.connect(std.testing.allocator, std.testing.io, "redis://127.0.0.1:6379");
+    defer client.disconnect();
+
+    var pipe = client.pipeline();
+    try pipe.set("pipe_key", "pipe_value");
+    try pipe.get("pipe_key");
+    try pipe.hset("pipe_hash", "field", "hash_value");
+    try pipe.hget("pipe_hash", "field");
+    try pipe.get("pipe_missing_key");
+
+    var replies = try pipe.exec();
+    defer replies.deinit();
+
+    try testing.expectEqual(@as(usize, 5), replies.items.len);
+    try testing.expectEqualStrings("OK", replies.items[0].status);
+    try testing.expectEqualStrings("pipe_value", replies.items[1].bulk.?);
+    try testing.expect(replies.items[2] == .integer);
+    try testing.expectEqualStrings("hash_value", replies.items[3].bulk.?);
+    try testing.expect(replies.items[4].bulk == null);
+}
+
+test "Pipeline records an error reply and keeps the connection in sync" {
+    var client = try RedisClient.connect(std.testing.allocator, std.testing.io, "redis://127.0.0.1:6379");
+    defer client.disconnect();
+
+    try client.hset("pipe_wrongtype_hash", "field", "value");
+
+    var pipe = client.pipeline();
+    try pipe.set("pipe_before_error", "1");
+    try pipe.get("pipe_wrongtype_hash");
+    try pipe.set("pipe_after_error", "2");
+
+    var replies = try pipe.exec();
+    defer replies.deinit();
+
+    try testing.expectEqualStrings("OK", replies.items[0].status);
+    try testing.expect(std.mem.startsWith(u8, replies.items[1].err, "WRONGTYPE"));
+    try testing.expectEqualStrings("OK", replies.items[2].status);
+
+    const value = try client.get("pipe_after_error");
+    defer if (value) |v| std.testing.allocator.free(v);
+    try testing.expectEqualStrings("2", value.?);
+}
+
+test "Pipeline with no commands returns no replies" {
+    var client = try RedisClient.connect(std.testing.allocator, std.testing.io, "redis://127.0.0.1:6379");
+    defer client.disconnect();
+
+    var pipe = client.pipeline();
+    var replies = try pipe.exec();
+    defer replies.deinit();
+
+    try testing.expectEqual(@as(usize, 0), replies.items.len);
+    try client.set("pipe_empty_check", "ok");
+}
+
+test "Pipeline handles batches larger than the internal buffers" {
+    const allocator = std.testing.allocator;
+    var client = try RedisClient.connect(allocator, std.testing.io, "redis://127.0.0.1:6379");
+    defer client.disconnect();
+
+    const big = try allocator.alloc(u8, 10_000);
+    defer allocator.free(big);
+    for (big, 0..) |*b, i| b.* = @truncate(i);
+
+    const pairs = 300;
+    var pipe = client.pipeline();
+    for (0..pairs) |i| {
+        var key_buf: [32]u8 = undefined;
+        const key = try std.fmt.bufPrint(&key_buf, "pipe_batch_{d}", .{i});
+        try pipe.set(key, if (i == 150) big else "small");
+        try pipe.get(key);
+    }
+
+    var replies = try pipe.exec();
+    defer replies.deinit();
+
+    try testing.expectEqual(@as(usize, pairs * 2), replies.items.len);
+    for (0..pairs) |i| {
+        try testing.expectEqualStrings("OK", replies.items[i * 2].status);
+        const expected: []const u8 = if (i == 150) big else "small";
+        try testing.expectEqualSlices(u8, expected, replies.items[i * 2 + 1].bulk.?);
+    }
+}
