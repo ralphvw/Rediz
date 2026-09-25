@@ -23,6 +23,39 @@ Measured on Linux against Valkey 9.1 on `127.0.0.1`, built with `ReleaseFast`. A
 - **Nagle's algorithm and delayed ACKs (~190x).** The 0.13 client wrote each fragment of a command (`*3\r\n`, `$3\r\n`, `SET`, ...) as its own small `write`. Nagle's algorithm holds a small write while an earlier one is unacknowledged, and the server, holding only part of a command, has no reply to piggyback an ACK on and waits out its ~40 ms delayed-ACK timer. Every command stalled ~40 ms (~24 ops/s), independent of value size. Setting `TCP_NODELAY` alone raised it to ~4,500 ops/s.
 - **Per-byte reads and many syscalls (~3x).** The 0.13 client issued one `read` per reply byte and ~10 `write`s per command. The 0.16 client uses a 4 KB buffered reader and a single write per command, which also avoids the Nagle stall without `TCP_NODELAY`.
 
+### What changed in 0.16
+
+Nagle's algorithm is still enabled; the client just no longer sends the traffic that triggers the stall. The change is in `sendCommand` in `src/redis.zig`.
+
+Before, `self.stream.writer()` was unbuffered, so every `print` and `writeAll` was its own `write` syscall and its own tiny TCP segment (about 10 for a `SET`):
+
+```zig
+var writer = self.stream.writer();
+try writer.print("*{d}\r\n", .{N});
+inline for (args) |arg| {
+    try writer.print("${d}\r\n", .{arg.len});
+    try writer.writeAll(arg);
+    try writer.writeAll("\r\n");
+}
+```
+
+Now the client owns a 4 KB write buffer (allocated in `connect`), and the command is written into it and flushed once:
+
+```zig
+const w = &self.writer.interface;
+try w.print("*{d}\r\n", .{N});
+inline for (args) |arg| {
+    try w.print("${d}\r\n", .{arg.len});
+    try w.writeAll(arg);
+    try w.writeAll("\r\n");
+}
+try w.flush();
+```
+
+The whole command reaches the server in one segment, so the server replies immediately and the ACK rides on that reply instead of waiting on the delayed-ACK timer.
+
+Commands larger than the 4 KB buffer are flushed in several writes. The 64 KiB workload still runs at ~8,900 ops/s, so it is not hitting the stall, but the buffer is what protects small commands. Setting `TCP_NODELAY` in `connect` would make this independent of write patterns; it is not currently set.
+
 ## Running
 
 Start a Redis-compatible server on `127.0.0.1:6379`, then:
